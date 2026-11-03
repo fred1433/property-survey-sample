@@ -307,7 +307,7 @@
     $('budget').setAttribute('aria-valuetext', money(budget) + ' a month');
     const pct = ((budget - S.BUDGET.min) / (S.BUDGET.max - S.BUDGET.min)) * 100;
     $('scale').style.setProperty('--pct-n', (pct / 100).toFixed(4));
-    $('tally').innerHTML = `<span class="t in"><b class="num">${st.meets.length}</b> meet<span class="long">&nbsp;every requirement</span></span><span class="t confirm"><b class="num">${st.confirm.length}</b> to confirm</span><span class="t out"><b class="num">${st.excluded.length}</b> excluded</span>`;
+    $('tally').innerHTML = `<span class="t in"><b class="num">${st.meets.length}</b><span>meet<span class="long"> every requirement</span></span></span><span class="t confirm"><b class="num">${st.confirm.length}</b> to confirm</span><span class="t out"><b class="num">${st.excluded.length}</b> excluded</span>`;
     const pdf = $('pdf');
     pdf.href = `pdf/sample-survey-${budget}.pdf`;
     pdf.setAttribute('download', `sample-survey-${budget}.pdf`);

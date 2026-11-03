@@ -173,6 +173,7 @@ a:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline
 .matrix th, .matrix td { text-align: left; vertical-align: top; padding: 2.1pt 8pt 2.1pt 0; border-bottom: .5pt solid var(--rule); }
 .matrix tbody th { width: 2.1in; font-weight: 500; color: var(--ink-2); }
 .matrix td { width: 1.95in; }
+.matrix.cols-1 td, .matrix.cols-2 td, .matrix.cols-3 td { width: 2.6in; }
 .matrix thead th { border-bottom: 1.2pt solid var(--ink); font-size: 9.5pt; font-weight: 700; font-stretch: 100%; padding-bottom: 4pt; }
 .matrix .rank { display: inline-grid; place-items: center; width: 14pt; height: 14pt; margin-right: 5pt; background: var(--ink); color: #fff; border-radius: 50%; font-size: 8pt; vertical-align: 1pt; }
 .matrix tr.key th, .matrix tr.key td { background: var(--accent-tint); color: var(--ink); font-weight: 600; }
