@@ -8,13 +8,13 @@ Live page: https://theaipipe.com/demos/property-survey-sample/
 
 ## What it does
 
-- Reads `site/sample-listings.csv`: 16 rows in an assumed column layout.
+- Reads `site/sample-listings.csv`: 16 rows in an assumed column layout. Row numbers count the header as row 1, as a spreadsheet does.
 - Applies one example requirement: 8,000 to 12,000 SF in one space, Southwest submarket, at least one dock-high and one grade-level door, available by March 1, 2027, warehouse and light assembly use, and a maximum monthly budget (estimated base rent + stated expenses).
 - Groups rows into offers. An exact repeat is counted once. The same suite offered on other terms (here, storage only) stays a separate offer. Two rows quoting different rents for the same offer stay together and are flagged; the newer figure is not assumed to be right.
-- Gives each offer one of three results, with its reason: **Meets**, **To confirm** (an essential value is missing or contradictory; it stays there whatever the budget), **Excluded**.
-- Costs: SF x base rent ($/SF/mo, NNN) + SF x stated expenses ($/SF/mo), then x 12 at the initial rate. An annual quote is converted only when the listing states the period. "On request" never becomes $0. A blank door count is neither present nor absent. Two suites of 5,000 SF are not added together.
+- Gives each offer one of three results, with its reason: **Shortlisted** (matches the listed screening criteria; permitted use still to be confirmed), **To confirm** (a required value is blank, unreadable or contradictory: submarket, size, doors, availability, rent, expenses or expense basis), **Excluded**. An offer to confirm is never promoted to Shortlisted when the budget rises; if every known cost for it is over the budget, it is excluded, and its unresolved values stay listed in the review.
+- Costs: SF x base rent ($/SF/mo, NNN) + SF x stated expenses ($/SF/mo), then x 12 at the initial rate. A rent quoted gross or modified gross gets no expenses added and no total; it goes to confirmation. An annual quote is converted only when the listing states the period. "On request" never becomes $0. A blank door count is neither present nor absent. Two suites of 5,000 SF are not added together.
 - Ranks the spaces that meet every requirement by estimated monthly cost. No score.
-- Lays out the survey: page 1 the requirement, the result and a schematic map; page 2 the comparison matrix in landscape, with the spaces to confirm and the exclusions; then one page per ranked space with a schematic bay plan drawn from the listing fields.
+- Lays out the survey: page 1 the requirement, the result and a schematic map; page 2 the comparison matrix in landscape, with the spaces to confirm and the exclusions; then one page per ranked space with a plan drawn to a common scale from the listed dimensions (door positions schematic).
 
 Every sentence in the survey is assembled by rules from the current values. No AI model runs on the page.
 
@@ -23,7 +23,7 @@ Every sentence in the survey is assembled by rules from the current values. No A
 - `site/rules.js`: parsing, grouping, checks, costs, ranking, sentences (pure functions; also loads in Node).
 - `site/app.js`: renders the pages, the budget scale and the review table from the rules.
 - `site/styles.css`: screen and print styles; the same pages are shown on screen and printed.
-- `site/pdf/`: the survey printed for every $500 budget step, by `scripts/render_pdfs.py`.
+- `site/pdf/`: the survey printed in advance for every $500 budget step, by `scripts/render_pdfs.py`, from the same page; the download matches the step shown.
 - `worker.js`, `wrangler.toml`: static hosting on Cloudflare.
 
 ## Run locally
@@ -38,7 +38,7 @@ python scripts/render_pdfs.py http://127.0.0.1:8781/
 
 - Sample data only. Nothing connects to a listings database, and the column layout is assumed, not matched to any particular export.
 - One fixed requirement. A real version would take the requirement, the selection rules and the layout from the broker's own guidelines and example surveys.
-- No photos; the plans are schematic and not to scale.
+- No photos. Plans use the listed outer dimensions; door positions and office placement are schematic.
 - Zoning is shown as listed; whether the tenant's use is permitted is not checked. Availability is as of the source date.
 - Costs leave out whatever the listing does not state (utilities, improvements, escalations).
 

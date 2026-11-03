@@ -8,15 +8,17 @@
   const $ = id => document.getElementById(id);
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-  let ROWS = null, state = null, prev = null;
+  let ROWS = null, state = null, gestureBase = null;
+  const val = v => (v == null || v === '' ? 'Not stated' : v);
+  const officeTxt = o => (o.officePct == null ? 'office not stated' : o.officePct + '% office');
 
   /* Illustrative pin slots inside the Southwest zone of the schematic. Not geocoded. */
   const PIN_SLOT = { A: [150, 252], B: [236, 292], C: [282, 214], D: [112, 300], E: [204, 214], F: [306, 286], K: [96, 248], L: [252, 250], M: [182, 312], N: [132, 236] };
 
   /* ---------- sheet chrome ---------- */
   function sheet(kind, n, total, budget, body, mid) {
-    return `<article class="sheet ${kind}" aria-label="Survey page ${n} of ${total}">
-      <header class="s-head"><span>${TITLE}</span><span class="num">Budget step ${money(budget)} a month</span></header>
+    return `<article class="sheet ${kind}" tabindex="0" role="button" aria-label="Survey page ${n} of ${total}, open at reading size">
+      <header class="s-head"><span>${TITLE}</span><span class="num">Budget: ${money(budget)} a month</span></header>
       <div class="s-body">${body}</div>
       <footer class="s-foot"><span class="fict">Fictional listings, sample survey</span><span>${mid || 'Prepared ' + fmtDate(S.REQUEST.prepared)}</span><span class="num">Page ${n} of ${total}</span></footer>
     </article>`;
@@ -70,15 +72,16 @@
             <dt>Available</dt><dd>By ${fmtDate(q.availableBy, true)}</dd>
             <dt>Budget</dt><dd><strong class="num">${money(st.budget)} a month</strong>, estimated base rent + stated expenses</dd>
             <dt>Lease</dt><dd>Direct or sublease</dd>
+            <dt>Term</dt><dd>Not specified</dd>
           </dl>
         </section>
         <section>
           <h3>What the file produced</h3>
           <ul class="result-list">
-            <li><b class="num">${n}</b> ${n === 1 ? 'space meets' : 'spaces meet'} every requirement: ${pagesLine}</li>
-            <li><b class="num">${st.confirm.length}</b> need${st.confirm.length === 1 ? 's' : ''} confirmation before they can be ranked: page 2</li>
-            <li><b class="num">${st.excluded.length}</b> excluded, each with its reason: page 2</li>
-            <li class="small">${st.rows.length} source rows became ${st.offers.length} distinct offers: ${repeats} exact repeat counted once, ${conflicted.length} offer with conflicting rows kept for review.</li>
+            <li><b class="num">${n}</b> <span>${n === 1 ? 'space matches' : 'spaces match'} the listed screening criteria: ${pagesLine}</span></li>
+            <li><b class="num">${st.confirm.length}</b> <span>${st.confirm.length === 1 ? 'needs confirmation before it' : 'need confirmation before they'} can be ranked: page 2</span></li>
+            <li><b class="num">${st.excluded.length}</b> <span>excluded, each with its reason: page 2</span></li>
+            <li class="small">${st.rows.length} source rows became ${st.offers.length} distinct offers: ${repeats} exact ${repeats === 1 ? 'repeat' : 'repeats'} counted once, ${conflicted.length} ${conflicted.length === 1 ? 'offer' : 'offers'} with conflicting rows kept for review.</li>
           </ul>
         </section>
       </div>
@@ -98,12 +101,12 @@
     let table;
     if (!m.length) {
       const nm = st.nearMiss;
-      table = `<div class="empty"><p>No space meets every requirement at ${money(st.budget)} a month.</p>${nm ? `<p>The lowest estimated cost among spaces that pass every other check is ${money(nm.cost.monthly)} a month (${esc(nm.offer.name)}).</p>` : ''}</div>`;
+      table = `<div class="empty"><p>No space matches the listed criteria at ${money(st.budget)} a month.</p>${nm ? `<p>The lowest estimated cost among spaces that pass every other check is ${money(nm.cost.monthly)} a month (${esc(nm.offer.name)}).</p>` : ''}</div>`;
     } else {
       const rowsDef = [
         ['Submarket', r => r.offer.submarket],
-        ['Rentable area', r => `${fmtInt(r.offer.sf)} SF <span class="sub">${r.offer.officePct}% office</span>`],
-        ['Lease', r => r.offer.lease === 'Sublease' ? `Sublease <span class="sub">to ${fmtDate(r.offer.subleaseTo)}</span>` : 'Direct'],
+        ['Rentable area', r => `${fmtInt(r.offer.sf)} SF <span class="sub">${officeTxt(r.offer)}</span>`],
+        ['Lease', r => r.offer.lease === 'Sublease' ? `Sublease <span class="sub">${r.offer.subleaseTo ? 'to ' + fmtDate(r.offer.subleaseTo) : 'end date not stated'}</span>` : 'Direct'],
         ['Available', r => fmtDate(r.offer.available)],
         ['Asking base rent', r => rentCell(r.cost)],
         ['Stated expenses', r => `${rate(r.offer.expenses)}/SF/mo`],
@@ -111,14 +114,14 @@
         ['Annualized at initial rate', r => money(r.cost.annual)],
         ['Under budget by', r => r.margin === 0 ? 'At budget' : money(r.margin)],
         ['Loading', r => loading(r.offer)],
-        ['Clear height', r => r.offer.clear + ' ft'],
-        ['Power', r => esc(r.offer.power)],
-        ['Warehouse cooling', r => esc(r.offer.cooling)],
-        ['Sprinklers', r => esc(r.offer.sprinklers)],
-        ['Yard / parking', r => esc(r.offer.yard)],
-        ['Year built', r => r.offer.yearBuilt],
-        ['Zoning, as listed', r => esc(r.offer.zoning)],
-        ['Listing broker', r => esc(r.offer.broker)],
+        ['Clear height', r => r.offer.clear == null ? 'Not stated' : r.offer.clear + ' ft'],
+        ['Power', r => esc(val(r.offer.power))],
+        ['Warehouse cooling', r => esc(val(r.offer.cooling))],
+        ['Sprinklers', r => esc(val(r.offer.sprinklers))],
+        ['Yard / parking', r => esc(val(r.offer.yard))],
+        ['Year built', r => val(r.offer.yearBuilt)],
+        ['Zoning, as listed', r => esc(val(r.offer.zoning))],
+        ['Listing broker', r => esc(val(r.offer.broker))],
         ['Source', r => `${r.offer.rows.length > 1 ? 'Rows' : 'Row'} ${r.offer.rows.join(' and ')}, dated ${fmtDate(r.offer.sourceDates[0])}`],
       ];
       table = `<table class="matrix cols-${m.length}">
@@ -129,7 +132,7 @@
     const short = r => esc(r.short);
     const body = `
       <div class="m-head">
-        <h3>Spaces meeting every requirement, ranked by estimated monthly cost</h3>
+        <h3>Shortlisted spaces, ranked by estimated monthly cost</h3>
         <p>Costs are base rent plus the expenses stated in the listing, per month, then annualized at the initial rate. Not included: utilities, improvements, escalations, anything the listing does not state.</p>
       </div>
       ${table}
@@ -143,36 +146,47 @@
   }
 
   /* ---------- pages 3+: one per ranked space ---------- */
+  /* Plan to a common scale (2.6 units per foot) from the listed dimensions; door positions are schematic. */
+  const FT = 2.4;
   function planSVG(o) {
-    const X = 20, Y = 10, W = 600, H = 150;
-    const ow = Math.max(56, Math.round(W * (o.office / o.sf)));
-    const doors = [];
+    const dims = o.dims || (o.sf ? { w: Math.round(Math.sqrt(o.sf * 2)), d: Math.round(o.sf / Math.round(Math.sqrt(o.sf * 2))), assumed: true } : { w: 120, d: 60, assumed: true });
+    const W = dims.w * FT, H = dims.d * FT, X = Math.round((560 - W) / 2), Y = 22;
+    const officeFt = o.office != null && dims.d ? o.office / dims.d : 0;
+    const ow = Math.round(officeFt * FT);
     const n = (o.dh || 0) + (o.gl || 0);
-    const span = W - ow - 40, start = X + ow + 20;
+    const span = W - ow - 36, start = X + ow + 18;
     const gap = n > 1 ? span / (n - 1) : 0;
+    const doors = [];
     let i = 0;
-    for (let k = 0; k < (o.dh || 0); k++, i++) {
-      const cx = n > 1 ? start + gap * i : start + span / 2;
-      doors.push(`<rect class="dh" x="${cx - 12}" y="${Y + H - 2}" width="24" height="9"/><text class="dl" x="${cx}" y="${Y + H + 22}">DH</text>`);
-    }
-    for (let k = 0; k < (o.gl || 0); k++, i++) {
-      const cx = n > 1 ? start + gap * i : start + span / 2;
-      doors.push(`<rect class="gl" x="${cx - 17}" y="${Y + H - 3}" width="34" height="6"/><text class="dl" x="${cx}" y="${Y + H + 22}">GL</text>`);
-    }
+    const at = () => (n > 1 ? start + gap * i : start + span / 2);
+    for (let k = 0; k < (o.dh || 0); k++, i++) { const cx = at(); doors.push(`<rect class="dh" x="${cx - 10}" y="${Y + H - 2}" width="20" height="8"/><text class="dl" x="${cx}" y="${Y + H + 20}">DH</text>`); }
+    for (let k = 0; k < (o.gl || 0); k++, i++) { const cx = at(); doors.push(`<rect class="gl" x="${cx - 14}" y="${Y + H - 3}" width="28" height="6"/><text class="dl" x="${cx}" y="${Y + H + 20}">GL</text>`); }
     const wx = X + ow + (W - ow) / 2;
-    return `<svg class="plan" viewBox="0 0 640 218" role="img" aria-label="Schematic floor plan: ${o.officePct}% office, ${loading(o)}, ${o.clear} ft clear">
+    const vbH = Y + H + 62;
+    const bar = 50 * FT, bx = 640 - 20 - bar, by = vbH - 14;
+    return `<svg class="plan" viewBox="0 0 640 ${vbH}" role="img" aria-label="Plan: ${dims.w} by ${dims.d} feet, ${officeTxt(o)}, ${loading(o)}">
       <defs><pattern id="hatchO${o.letter}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" class="hatch"/></pattern></defs>
+      <line class="dim" x1="${X}" y1="10" x2="${X + W}" y2="10"/><line class="dim" x1="${X}" y1="5" x2="${X}" y2="15"/><line class="dim" x1="${X + W}" y1="5" x2="${X + W}" y2="15"/>
+      <text class="pl small" x="${X + W / 2}" y="8" dy="-1">${dims.w} ft</text>
+      <line class="dim" x1="${X + W + 12}" y1="${Y}" x2="${X + W + 12}" y2="${Y + H}"/>
+      <text class="pl small start" x="${X + W + 18}" y="${Y + H / 2 + 4}">${dims.d} ft</text>
       <rect class="shell" x="${X}" y="${Y}" width="${W}" height="${H}"/>
-      <rect class="office" x="${X}" y="${Y}" width="${ow}" height="${H}" fill="url(#hatchO${o.letter})"/>
-      <line class="wall" x1="${X + ow}" y1="${Y}" x2="${X + ow}" y2="${Y + H}"/>
-      <text class="pl" x="${X + ow / 2}" y="${Y + H / 2 - 4}">Office</text>
-      <text class="pl small" x="${X + ow / 2}" y="${Y + H / 2 + 12}">${fmtInt(o.office)} SF</text>
+      ${ow ? `<rect class="office" x="${X}" y="${Y}" width="${ow}" height="${H}" fill="url(#hatchO${o.letter})"/><line class="wall" x1="${X + ow}" y1="${Y}" x2="${X + ow}" y2="${Y + H}"/>
+      ${ow >= 60 ? `<text class="pl" x="${X + ow / 2}" y="${Y + H / 2 - 4}">Office</text><text class="pl small" x="${X + ow / 2}" y="${Y + H / 2 + 12}">${fmtInt(o.office)} SF</text>`
+        : `<text class="pl small" transform="translate(${X + ow / 2 + 4} ${Y + H / 2}) rotate(-90)">Office ${fmtInt(o.office)} SF</text>`}` : ''}
       <text class="pl big" x="${wx}" y="${Y + H / 2 - 8}">Warehouse</text>
-      <text class="pl" x="${wx}" y="${Y + H / 2 + 12}">${fmtInt(o.sf - o.office)} SF, ${o.clear} ft clear</text>
+      <text class="pl" x="${wx}" y="${Y + H / 2 + 12}">${o.sf != null && o.office != null ? fmtInt(o.sf - o.office) + ' SF, ' : ''}${o.clear == null ? 'clear height not stated' : o.clear + ' ft clear'}</text>
       ${doors.join('')}
-      <rect class="yard" x="${X}" y="${Y + H + 32}" width="${W}" height="24"/>
-      <text class="pl small" x="${X + W / 2}" y="${Y + H + 48}">${esc(o.yard)}</text>
+      <rect class="yard" x="${X}" y="${Y + H + 30}" width="${W}" height="20"/>
+      <text class="pl small" x="${X + W / 2}" y="${Y + H + 44}">${esc(val(o.yard))}</text>
+      <line class="scalebar" x1="${bx}" y1="${by}" x2="${bx + bar}" y2="${by}"/><line class="dim" x1="${bx}" y1="${by - 4}" x2="${bx}" y2="${by + 4}"/><line class="dim" x1="${bx + bar}" y1="${by - 4}" x2="${bx + bar}" y2="${by + 4}"/>
+      <text class="pl small" x="${bx + bar / 2}" y="${by - 6}">50 ft</text>
     </svg>`;
+  }
+  function planCaption(o) {
+    return o.dims
+      ? `Drawn to the same scale on every page from the listed dimensions (${o.dims.w} x ${o.dims.d} ft) and office area. Door positions are schematic.`
+      : 'Dimensions not listed: proportions assumed, not to scale. Door positions are schematic.';
   }
 
   function spacePage(st, r) {
@@ -186,7 +200,7 @@
         </div>
       </div>
       <p class="verdict">${esc(r.sentence)}</p>
-      <figure class="plan-fig">${planSVG(o)}<figcaption>Schematic, not to scale. Drawn from the listing fields: area, office share, doors, clear height, yard.</figcaption></figure>
+      <figure class="plan-fig">${planSVG(o)}<figcaption>${planCaption(o)}</figcaption></figure>
       <div class="sp-grid">
         <table class="cost">
           <caption>Estimated monthly cost</caption>
@@ -194,25 +208,25 @@
           <tr><th scope="row">Stated expenses</th><td class="num calc">${fmtInt(o.sf)} SF \u00d7 ${rate(o.expenses)}</td><td class="num">${money(c.exp)}</td></tr>
           <tr class="sum"><th scope="row">Monthly, base + expenses</th><td></td><td class="num">${money(c.monthly)}</td></tr>
           <tr><th scope="row">Annualized at initial rate</th><td class="num calc">\u00d7 12</td><td class="num">${money(c.annual)}</td></tr>
-          <tr><th scope="row">Budget step</th><td></td><td class="num">${money(st.budget)}</td></tr>
+          <tr><th scope="row">Budget</th><td></td><td class="num">${money(st.budget)}</td></tr>
           <tr><th scope="row">Under budget by</th><td></td><td class="num">${r.margin === 0 ? 'At budget' : money(r.margin)}</td></tr>
         </table>
         <dl class="specs">
-          <dt>Rentable area</dt><dd class="num">${fmtInt(o.sf)} SF (${o.officePct}% office)</dd>
-          <dt>Lease</dt><dd>${o.lease === 'Sublease' ? 'Sublease to ' + fmtDate(o.subleaseTo) : 'Direct'}</dd>
+          <dt>Rentable area</dt><dd class="num">${fmtInt(o.sf)} SF (${officeTxt(o)})</dd>
+          <dt>Lease</dt><dd>${o.lease === 'Sublease' ? 'Sublease to ' + (o.subleaseTo ? fmtDate(o.subleaseTo) : 'end date not stated') : 'Direct'}</dd>
           <dt>Available</dt><dd>${fmtDate(o.available)}</dd>
           <dt>Loading</dt><dd class="num">${loading(o)}</dd>
-          <dt>Clear height</dt><dd class="num">${o.clear} ft</dd>
-          <dt>Power</dt><dd class="num">${esc(o.power)}</dd>
-          <dt>Warehouse cooling</dt><dd>${esc(o.cooling)}</dd>
-          <dt>Sprinklers</dt><dd>${esc(o.sprinklers)}</dd>
-          <dt>Yard / parking</dt><dd>${esc(o.yard)}</dd>
-          <dt>Year built</dt><dd class="num">${o.yearBuilt}</dd>
-          <dt>Zoning, as listed</dt><dd>${esc(o.zoning)}</dd>
+          <dt>Clear height</dt><dd class="num">${o.clear == null ? 'Not stated' : o.clear + ' ft'}</dd>
+          <dt>Power</dt><dd class="num">${esc(val(o.power))}</dd>
+          <dt>Warehouse cooling</dt><dd>${esc(val(o.cooling))}</dd>
+          <dt>Sprinklers</dt><dd>${esc(val(o.sprinklers))}</dd>
+          <dt>Yard / parking</dt><dd>${esc(val(o.yard))}</dd>
+          <dt>Year built</dt><dd class="num">${val(o.yearBuilt)}</dd>
+          <dt>Zoning, as listed</dt><dd>${esc(val(o.zoning))}</dd>
         </dl>
       </div>
-      <section class="reserves"><h4>Reserves</h4><ul>${r.notes.map(t => `<li>${esc(t)}</li>`).join('')}</ul></section>
-      <p class="trace">Source: sample-listings.csv, ${o.rows.length > 1 ? 'rows' : 'row'} ${o.rows.join(' and ')}, dated ${fmtDate(o.sourceDates[0])}. Listing broker: ${esc(o.broker)}.</p>`;
+      <section class="reserves"><h4>Review notes</h4><ul>${r.notes.map(t => `<li>${esc(t)}</li>`).join('')}</ul></section>
+      <p class="trace">Source: sample-listings.csv, ${o.rows.length > 1 ? 'rows' : 'row'} ${o.rows.join(' and ')}, dated ${fmtDate(o.sourceDates[0])}. Listing broker: ${esc(val(o.broker))}.</p>`;
     return sheet('portrait', r.rank + 2, st.pages, st.budget, body, esc(o.name));
   }
 
@@ -259,28 +273,45 @@
   function review(st) {
     const order = { meets: 0, confirm: 1, excluded: 2 };
     const list = [...st.results].sort((a, b) => order[a.status] - order[b.status] || (a.rank || 0) - (b.rank || 0) || a.offer.rows[0] - b.offer.rows[0]);
-    const label = r => r.status === 'meets' ? `Meets, rank ${r.rank}` : r.status === 'confirm' ? 'To confirm' : 'Excluded';
-    const cost = o => o.costs.length ? o.costs.map(c => money(c.monthly)).join(' or ') : (o.rents.some(x => x.missing) ? 'Rent on request' : 'Incomplete');
+    const label = r => r.status === 'meets' ? `Shortlisted, rank ${r.rank}` : r.status === 'confirm' ? 'To confirm' : 'Excluded';
+    const cost = o => o.costs.length ? o.costs.map(c => money(c.monthly)).join(' or ') : (o.rents.some(x => x.missing && x.raw !== 'blank') ? 'Rent on request' : o.rents.some(x => x.missing) ? 'Rent not stated' : 'Incomplete');
     $('review').innerHTML = `<thead><tr><th scope="col">Rows</th><th scope="col">Space</th><th scope="col" class="num">Est. monthly</th><th scope="col">Result</th><th scope="col">Why</th></tr></thead>
       <tbody>${list.map(r => `<tr class="st-${r.status}">
         <td class="num rows">${r.offer.rows.join(', ')}</td>
-        <td><span class="sp">${esc(r.offer.name)}</span><span class="sub">${esc(r.offer.submarket)}, ${fmtInt(r.offer.sf)} SF${r.offer.useRestriction ? ', ' + esc(r.offer.useRestriction.toLowerCase()) : ''}</span></td>
+        <td><span class="sp">${esc(r.offer.name)}</span><span class="sub">${esc(r.offer.submarket || 'Submarket not stated')}, ${r.offer.sf == null ? 'size not stated' : fmtInt(r.offer.sf) + ' SF'}${r.offer.useRestriction ? ', ' + esc(r.offer.useRestriction.toLowerCase()) : ''}</span></td>
         <td class="num">${cost(r.offer)}</td>
         <td><span class="chip ${r.status}">${label(r)}</span></td>
         <td class="why">${esc(r.sentence)}</td></tr>`).join('')}</tbody>`;
   }
 
-  /* ---------- what changed since the last budget ---------- */
+  /* ---------- what changed since the start of the gesture ---------- */
+  function names(list) { return list.map(r => r.offer.name).join('; '); }
   function changeNote(st, before) {
-    if (!before) return `${st.meets.length} of ${st.offers.length} offers meet every requirement at ${money(st.budget)}. Each letter on the scale is a space that passes every other check, placed at its estimated monthly cost.`;
-    const was = new Map(before.results.map(r => [r.offer.id, r.status]));
-    const ins = st.meets.filter(r => was.get(r.offer.id) !== 'meets');
-    const outs = before.meets.filter(r => !st.meets.some(x => x.offer.id === r.offer.id));
+    const n = st.meets.length;
+    const head = n ? `At ${money(st.budget)}, ${n} ${n === 1 ? 'space matches' : 'spaces match'} the listed criteria.` : `At ${money(st.budget)}, no space matches the listed criteria.`;
+    if (!before || before.budget === st.budget) return `${head} The survey has ${st.pages} pages.`;
+    const ids = list => new Set(list.map(r => r.offer.id));
+    const bm = ids(before.meets), bc = ids(before.confirm), nm = ids(st.meets), nc = ids(st.confirm);
     const parts = [];
-    if (ins.length) parts.push(ins.map(r => `${r.offer.name} now meets, rank ${r.rank}`).join('; '));
-    if (outs.length) parts.push(outs.map(r => `${r.offer.name} drops out (${money(r.cost.monthly)} a month)`).join('; '));
-    if (!parts.length) parts.push(`same shortlist; margins under budget updated`);
-    return `At ${money(st.budget)}: ${parts.join('; ')}. The survey now has ${st.pages} pages.`;
+    const ins = st.meets.filter(r => !bm.has(r.offer.id));
+    const outs = before.meets.filter(r => !nm.has(r.offer.id));
+    const cin = st.confirm.filter(r => !bc.has(r.offer.id));
+    const cout = before.confirm.filter(r => !nc.has(r.offer.id));
+    if (ins.length) parts.push('Now shortlisted: ' + ins.map(r => `${r.offer.name} (rank ${r.rank})`).join('; ') + '.');
+    if (outs.length) parts.push('Dropped, over budget: ' + outs.map(r => `${r.offer.name} (${money(r.cost.monthly)} a month)`).join('; ') + '.');
+    if (cin.length) parts.push('Back on the list to confirm: ' + names(cin) + '.');
+    if (cout.length) parts.push('Off the list to confirm, over budget at every known cost: ' + names(cout) + '.');
+    if (!parts.length) parts.push('Same shortlist; only the margins under budget changed.');
+    return `${head} Compared with ${money(before.budget)}: ${parts.join(' ')} The survey has ${st.pages} pages.`;
+  }
+
+  function legend(st) {
+    const two = st.results.filter(r => r.offer.costs.length > 1).map(r => r.offer.letter);
+    const none = st.results.filter(r => r.status !== 'excluded' && !r.offer.costs.length).map(r => r.offer.letter);
+    let t = 'Each letter marks a known estimated monthly cost: filled, shortlisted; amber outline, to confirm; grey, over the budget.';
+    if (two.length) t += ` ${two.join(' and ')} ${two.length === 1 ? 'has' : 'have'} two conflicting rent quotes, so two marks.`;
+    if (none.length) t += ` ${none.join(' and ')} has no mark: no rent stated.`;
+    return t;
   }
 
   /* ---------- zoom of the sheets on screen ---------- */
@@ -299,7 +330,7 @@
     }
   }
 
-  function render(budget) {
+  function render(budget, base) {
     state = S.run(ROWS, budget);
     const st = state;
     $('budgetOut').textContent = money(budget);
@@ -307,7 +338,7 @@
     $('budget').setAttribute('aria-valuetext', money(budget) + ' a month');
     const pct = ((budget - S.BUDGET.min) / (S.BUDGET.max - S.BUDGET.min)) * 100;
     $('scale').style.setProperty('--pct-n', (pct / 100).toFixed(4));
-    $('tally').innerHTML = `<span class="t in"><b class="num">${st.meets.length}</b><span>meet<span class="long"> every requirement</span></span></span><span class="t confirm"><b class="num">${st.confirm.length}</b> to confirm</span><span class="t out"><b class="num">${st.excluded.length}</b> excluded</span>`;
+    $('tally').innerHTML = `<span class="t in"><b class="num">${st.meets.length}</b><span>${st.meets.length === 1 ? 'matches' : 'match'}<span class="long"> the listed screening criteria</span></span></span><span class="t confirm"><b class="num">${st.confirm.length}</b> to confirm</span><span class="t out"><b class="num">${st.excluded.length}</b> excluded</span>`;
     const pdf = $('pdf');
     pdf.href = `pdf/sample-survey-${budget}.pdf`;
     pdf.setAttribute('download', `sample-survey-${budget}.pdf`);
@@ -315,8 +346,9 @@
     $('desk').innerHTML = cover(st) + matrix(st) + st.meets.map(r => spacePage(st, r)).join('');
     review(st);
     scaleMarks(st);
-    $('change').textContent = changeNote(st, prev);
-    prev = st;
+    $('change').textContent = changeNote(st, base);
+    $('legend').textContent = legend(st);
+    $('pdfOpen').href = pdf.href;
     document.documentElement.dataset.pages = st.pages;
     const u = new URL(location.href);
     u.searchParams.set('budget', budget);
@@ -337,7 +369,25 @@
     scaleTicks();
     fitSheets();
     render(q ? snap(q) : S.BUDGET.initial);
-    input.addEventListener('input', () => render(snap(Number(input.value))));
+    input.addEventListener('pointerdown', () => { gestureBase = state; });
+    input.addEventListener('input', () => { if (!gestureBase) gestureBase = state; render(snap(Number(input.value)), gestureBase); });
+    input.addEventListener('change', () => { gestureBase = null; });
+    window.addEventListener('pointerup', () => setTimeout(() => { if (document.activeElement !== input || !input.matches(':active')) gestureBase = null; }, 0));
+    // A click on a page opens it at reading size.
+    const viewer = $('viewer');
+    const openSheet = el => {
+      const copy = el.cloneNode(true);
+      const wide = el.classList.contains('landscape');
+      const z = Math.min(1.3, (window.innerWidth - 48) / (wide ? 1056 : 816));
+      copy.style.zoom = z; copy.removeAttribute('tabindex'); copy.removeAttribute('role');
+      $('viewerBody').replaceChildren(copy);
+      viewer.showModal();
+      $('viewerBody').scrollTop = 0;
+    };
+    $('desk').addEventListener('click', e => { const sh = e.target.closest('.sheet'); if (sh) openSheet(sh); });
+    $('desk').addEventListener('keydown', e => { const sh = e.target.closest('.sheet'); if (sh && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openSheet(sh); } });
+    $('viewerClose').addEventListener('click', () => viewer.close());
+    viewer.addEventListener('click', e => { if (e.target === viewer) viewer.close(); });
     window.addEventListener('resize', () => { fitSheets(); scaleMarks(state); });
     window.SurveyState = () => ({
       budget: state.budget, pages: state.pages,
@@ -345,7 +395,7 @@
       confirm: state.confirm.map(r => r.offer.name),
       excluded: state.excluded.map(r => ({ name: r.offer.name, why: r.sentence })),
     });
-    window.setBudget = b => render(snap(b));
+    window.setBudget = b => render(snap(b), state);
     document.documentElement.dataset.ready = '1';
   }
   init();

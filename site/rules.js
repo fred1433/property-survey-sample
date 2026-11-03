@@ -20,12 +20,13 @@
   /* ---------- formatting ---------- */
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const LONG_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  function fmtInt(n) { return Math.round(n).toLocaleString('en-US'); }
+  function fmtInt(n) { return n == null || !Number.isFinite(n) ? 'not stated' : Math.round(n).toLocaleString('en-US'); }
   function money(n) { return '$' + fmtInt(n); }
   function rate(n) { return '$' + n.toFixed(2); }
   function fmtDate(iso, long) {
     if (!iso) return '';
     if (/^now$/i.test(iso)) return 'Now';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
     const [y, m, d] = iso.split('-').map(Number);
     return (long ? LONG_MONTHS : MONTHS)[m - 1] + ' ' + d + ', ' + y;
   }
@@ -51,13 +52,13 @@
     return rows
       .filter(r => r.some(v => v.trim() !== ''))
       .map((r, i) => {
-        const o = { row: i + 1 };
+        const o = { row: i + 2 }; // spreadsheet numbering: the header is row 1
         head.forEach((h, j) => { o[h] = (r[j] == null ? '' : r[j]).trim(); });
         return o;
       });
   }
 
-  const COMPARED = ['Building', 'Suite', 'Submarket', 'Space SF', 'Office SF', 'Lease Type', 'Sublease Expires', 'Use Restriction',
+  const COMPARED = ['Building', 'Suite', 'Submarket', 'Space SF', 'Office SF', 'Dimensions (ft)', 'Lease Type', 'Sublease Expires', 'Use Restriction',
     'Asking Rent', 'Rent Basis', 'Expenses', 'Expenses Basis', 'Available', 'Dock-High Doors', 'Grade-Level Doors',
     'Clear Height (ft)', 'Power', 'Warehouse Cooling', 'Sprinklers', 'Yard / Parking', 'Year Built', 'Zoning (as listed)', 'Listing Broker'];
 
@@ -121,7 +122,7 @@
     const exp = numOrNull(r['Expenses']);
     const dh = numOrNull(r['Dock-High Doors']);
     const gl = numOrNull(r['Grade-Level Doors']);
-    const letter = (r['Building'].match(/Building (\w+)$/) || [null, '?'])[1];
+    const letter = ((r['Building'] || '').match(/Building (\w+)$/) || [null, '?'])[1];
     const o = {
       id: rows.join('-'),
       rows, repeats, conflicts, variants,
@@ -129,10 +130,11 @@
       name: r['Building'] + ', Suite ' + r['Suite'],
       submarket: r['Submarket'], sf, office,
       officePct: sf && office != null ? pct(office, sf) : null,
+      dims: readDims(r['Dimensions (ft)']),
       lease: r['Lease Type'], subleaseTo: r['Sublease Expires'] || null,
       useRestriction: r['Use Restriction'] || null,
       rents, expenses: exp, expensesBasis: r['Expenses Basis'],
-      available: r['Available'], dh, gl,
+      available: r['Available'], dh, gl, dhRaw: r['Dock-High Doors'], glRaw: r['Grade-Level Doors'],
       clear: numOrNull(r['Clear Height (ft)']), power: r['Power'], cooling: r['Warehouse Cooling'],
       sprinklers: r['Sprinklers'], yard: r['Yard / Parking'], yearBuilt: r['Year Built'],
       zoning: r['Zoning (as listed)'], broker: r['Listing Broker'],
@@ -143,8 +145,14 @@
   }
 
   /* Estimated monthly base rent + stated expenses, one value per quoted rent. Nothing missing becomes zero. */
+  function readDims(v) {
+    const m = String(v || '').match(/^\s*(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)\s*$/i);
+    return m ? { w: Number(m[1]), d: Number(m[2]) } : null;
+  }
+
   function costOptions(o) {
     if (o.sf == null || o.expenses == null) return [];
+    if (o.rents.some(rt => rt.perMonth != null && rt.regime !== 'NNN')) return [];
     const out = [];
     for (const rt of o.rents) {
       if (rt.perMonth == null) return [];
@@ -162,31 +170,46 @@
   }
 
   /* ---------- evaluation against the request and the current budget ---------- */
-  function evaluate(o, budget, req, all) {
+  const ISO = /^\d{4}-\d{2}-\d{2}$/;
+  function monthsBetween(a, b) {
+    const [y1, m1, d1] = a.split('-').map(Number), [y2, m2, d2] = b.split('-').map(Number);
+    return (y2 - y1) * 12 + (m2 - m1) - (d2 < d1 ? 1 : 0);
+  }
+  function yearsMonths(n) {
+    const y = Math.floor(n / 12), m = n % 12;
+    return [y ? y + (y === 1 ? ' year' : ' years') : '', m ? m + (m === 1 ? ' month' : ' months') : ''].filter(Boolean).join(' ') || 'less than a month';
+  }
+
+  function evaluate(o, budget, req) {
     const fails = [], unknowns = [], notes = [];
-    if (o.submarket !== req.submarket) fails.push('In ' + o.submarket + '; the request requires ' + req.submarket + '.');
-    if (o.sf != null && o.sf < req.minSF) {
+    // Required fields: a blank or unreadable value is never read as zero or absent; the offer goes to "to confirm".
+    if (!o.submarket) unknowns.push('Submarket is blank in the source row.');
+    else if (o.submarket !== req.submarket) fails.push('In ' + o.submarket + '; the request requires ' + req.submarket + '.');
+    if (o.sf == null) unknowns.push('Space size is blank in the source row, so size and costs cannot be checked.');
+    else if (o.sf < req.minSF) {
       let t = fmtInt(o.sf) + ' SF is below the ' + fmtInt(req.minSF) + ' SF minimum.';
       const mates = o.buildingMates.filter(m => m.sf != null && m.sf < req.minSF);
       if (mates.length) t += ' Suites ' + [o.suite, ...mates.map(m => m.suite)].sort().join(' and ') + ' are listed separately and are not added together.';
       fails.push(t);
-    }
-    if (o.sf != null && o.sf > req.maxSF) fails.push(fmtInt(o.sf) + ' SF is above the ' + fmtInt(req.maxSF) + ' SF maximum.');
+    } else if (o.sf > req.maxSF) fails.push(fmtInt(o.sf) + ' SF is above the ' + fmtInt(req.maxSF) + ' SF maximum.');
     if (o.useRestriction) {
       let t = 'Offered for "' + o.useRestriction.toLowerCase() + '"; the request is for ' + req.use.toLowerCase() + ' use.';
       const other = o.siblings.filter(s => !s.useRestriction);
       if (other.length) t += ' Kept apart from the ' + other[0].lease.toLowerCase() + ' offer on the same suite (row ' + other[0].rows[0] + ').';
       fails.push(t);
     }
-    if (o.dh == null) unknowns.push('Dock-high door count is blank in the source row; not assumed present or absent.');
+    if (o.dh == null) unknowns.push('Dock-high door count is ' + (o.dhRaw ? '"' + o.dhRaw + '"' : 'blank') + ' in the source row; not assumed present or absent.');
     else if (o.dh < req.minDH) fails.push('No dock-high door (' + loading(o) + '); the request needs at least ' + req.minDH + '.');
-    if (o.gl == null) unknowns.push('Grade-level door count is blank in the source row; not assumed present or absent.');
+    if (o.gl == null) unknowns.push('Grade-level door count is ' + (o.glRaw ? '"' + o.glRaw + '"' : 'blank') + ' in the source row; not assumed present or absent.');
     else if (o.gl < req.minGL) fails.push('No grade-level door (' + loading(o) + '); the request needs at least ' + req.minGL + '.');
-    if (!/^now$/i.test(o.available) && o.available > req.availableBy) fails.push('Available ' + fmtDate(o.available) + ', after the ' + fmtDate(req.availableBy) + ' deadline.');
+    if (/^now$/i.test(o.available)) { /* available now */ }
+    else if (ISO.test(o.available)) { if (o.available > req.availableBy) fails.push('Available ' + fmtDate(o.available) + ', after the ' + fmtDate(req.availableBy) + ' deadline.'); }
+    else unknowns.push('Availability is ' + (o.available ? '"' + o.available + '"' : 'blank') + ' in the source row; the ' + fmtDate(req.availableBy) + ' deadline cannot be checked.');
 
     for (const rt of o.rents) {
-      if (rt.missing) unknowns.push('Asking rent is "' + rt.raw + '", so the monthly cost cannot be checked against the budget. It is not counted as $0.');
+      if (rt.missing) unknowns.push('Asking rent is ' + (rt.raw === 'blank' ? 'blank' : '"' + rt.raw + '"') + ', so the monthly cost cannot be checked against the budget. It is not counted as $0.');
       if (rt.periodUnknown) unknowns.push('Rent of ' + rt.raw + ' has no stated period; not converted.');
+      if (rt.perMonth != null && rt.regime !== 'NNN') unknowns.push('Rent is quoted ' + (rt.regime ? rt.regime : 'without a stated expense basis') + '; which expenses it already includes is not stated, so no expenses are added and no total is shown.');
     }
     if (o.expenses == null) unknowns.push('Expenses are blank in the source row; the monthly cost is incomplete.');
     const rentConflict = o.conflicts.find(c => c.field === 'Asking Rent');
@@ -195,8 +218,7 @@
         rentConflict.rows.map(x => rate(Number(x.value)) + ' (' + fmtDate(x.date) + ')').join(' and ') +
         ' per SF per month for the same offer. The newer figure is not assumed to be right.');
     }
-    const otherConflicts = o.conflicts.filter(c => c.field !== 'Asking Rent');
-    for (const c of otherConflicts) unknowns.push('Rows ' + c.rows.map(x => x.row).join(' and ') + ' disagree on ' + c.field.toLowerCase() + '.');
+    for (const c of o.conflicts.filter(c => c.field !== 'Asking Rent')) unknowns.push('Rows ' + c.rows.map(x => x.row).join(' and ') + ' disagree on ' + c.field.toLowerCase() + '.');
 
     // Budget: a known cost above the budget excludes; with two quoted rents, only if both are above.
     let budgetLine = null;
@@ -213,26 +235,34 @@
       }
     }
 
-    let status = fails.length ? 'excluded' : unknowns.length ? 'confirm' : 'meets';
+    const status = fails.length ? 'excluded' : unknowns.length ? 'confirm' : 'meets';
     const cost = o.costs.length === 1 ? o.costs[0] : null;
 
-    // Reserves kept with a presented space.
-    if (o.lease === 'Sublease') notes.push('Sublease through ' + fmtDate(o.subleaseTo) + ', as listed.');
+    // Review notes kept with a presented space.
+    if (o.lease === 'Sublease') {
+      if (o.subleaseTo && ISO.test(o.subleaseTo)) {
+        const from = ISO.test(o.available) && o.available > req.prepared ? o.available : req.prepared;
+        const n = monthsBetween(from, o.subleaseTo);
+        notes.push('Sublease through ' + fmtDate(o.subleaseTo) + ', as listed: about ' + yearsMonths(Math.max(0, n)) + ' of term left from ' +
+          (from === req.prepared ? 'the survey date' : 'availability') + '. The request does not specify a term; confirm it fits.');
+      } else notes.push('Sublease; the end date of the sublease is not stated in the listing.');
+    }
     for (const c of o.costs) if (c.quoted) notes.push('Rent listed as ' + c.quoted.trim() + '; shown as ' + rate(c.rentPerMonth) + '/SF/mo because the listing states the period.');
     for (const rep of o.repeats) notes.push('Listed ' + (rep.length === 2 ? 'twice' : rep.length + ' times') + ' in the source file with identical terms (rows ' + rep.join(' and ') + '); counted once.');
     for (const s of o.siblings) if (s.useRestriction) notes.push('The same suite is also offered as "' + s.useRestriction.toLowerCase() + '" at a lower rent (row ' + s.rows[0] + '). That offer does not fit the stated use and is excluded.');
     notes.push('Availability as stated in a source dated ' + fmtDate(o.sourceDates[0]) + '; not confirmed with the listing broker.');
-    notes.push('Zoning as listed: ' + o.zoning + '. Whether the tenant’s use is permitted has not been checked.');
+    notes.push('Zoning as listed: ' + (o.zoning || 'not stated') + '. Whether the tenant’s use is permitted has not been checked.');
 
     let sentence;
     if (status === 'meets') {
       const margin = budget - cost.monthly;
-      sentence = 'Meets the stated size, submarket, use, loading and availability requirements; estimated monthly base rent + stated expenses is ' +
-        money(cost.monthly) + (margin === 0 ? ', exactly the ' + money(budget) + ' budget.' : ', ' + money(margin) + ' under the ' + money(budget) + ' budget.');
+      sentence = 'Matches the listed size, submarket, loading, availability and budget criteria; estimated monthly base rent + stated expenses is ' +
+        money(cost.monthly) + (margin === 0 ? ', exactly the ' + money(budget) + ' budget.' : ', ' + money(margin) + ' under the ' + money(budget) + ' budget.') +
+        ' Permitted use remains to be confirmed.';
     } else if (status === 'confirm') {
       sentence = unknowns.join(' ') + (budgetLine ? ' ' + budgetLine : '');
     } else {
-      sentence = fails.join(' ');
+      sentence = fails.join(' ') + (unknowns.length ? ' Also unresolved: ' + unknowns.join(' ') : '');
     }
     // Short form for the printed lists: the first reason, first sentence, plus the budget line for spaces to confirm.
     const first = t => (t || '').split(/(?<=\.)\s/)[0];
@@ -247,7 +277,7 @@
   function run(rows, budget, req) {
     req = req || REQUEST;
     const offers = buildOffers(rows);
-    const results = offers.map(o => evaluate(o, budget, req, offers));
+    const results = offers.map(o => evaluate(o, budget, req));
     const meets = results.filter(r => r.status === 'meets').sort((a, b) => a.cost.monthly - b.cost.monthly || a.offer.rows[0] - b.offer.rows[0]);
     meets.forEach((r, i) => { r.rank = i + 1; });
     const confirm = results.filter(r => r.status === 'confirm');
