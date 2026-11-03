@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sample property survey: industrial lease search, Southwest Las Vegas (fictional listings)</title>
+<meta name="description" content="A sample commercial property survey rebuilt from a fictional listings file at every budget: shortlist, comparison, one page per space, PDF.">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon.png" type="image/png">
+<link rel="preload" href="fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="masthead">
+  <h1>Sample property survey</h1>
+  <p class="lede">Industrial lease search, Southwest Las Vegas. Assembled from a <a href="sample-listings.csv">16-row listings file</a> by fixed rules; every building, suite, broker and figure in it is fictional. Change the budget and the shortlist, the comparison, the pages and the PDF are rebuilt.</p>
+</header>
+
+<section class="control" aria-label="Budget">
+  <div class="control-inner">
+    <div class="budget-read">
+      <label for="budget">Maximum monthly budget</label>
+      <output id="budgetOut" for="budget">$16,000</output>
+      <span class="unit">estimated base rent + stated expenses</span>
+    </div>
+    <div class="scale" id="scale">
+      <div class="marks" id="marks" aria-hidden="true"></div>
+      <div class="ruler">
+        <div class="band" aria-hidden="true"></div>
+        <div class="ticks" id="ticks" aria-hidden="true"></div>
+        <input type="range" id="budget" min="10000" max="20000" step="500" value="16000">
+      </div>
+    </div>
+    <div class="side">
+      <div class="tally" id="tally"></div>
+      <a class="pdf" id="pdf" href="pdf/sample-survey-16000.pdf" download>Download PDF</a>
+    </div>
+  </div>
+  <p class="change" id="change" aria-live="polite"></p>
+</section>
+
+<main class="desk" id="desk" aria-label="Survey pages"></main>
+
+<section class="review" aria-labelledby="review-h">
+  <h2 id="review-h">Every offer in the file, and what the rules did with it</h2>
+  <p class="review-lede">Sixteen rows become fourteen offers. An exact repeat is counted once. Two rows quoting different rents for the same suite stay together and are flagged, not settled. The same suite offered for storage only stays a separate offer. A blank field is never read as zero or as absent.</p>
+  <div class="table-wrap"><table id="review" class="review-table"></table></div>
+
+  <dl class="how">
+    <div><dt>Input</dt><dd><a href="sample-listings.csv">sample-listings.csv</a>, in an assumed column layout. Nothing here connects to a listings database; the file stands in for an export a broker would pull.</dd></div>
+    <div><dt>Rules</dt><dd>Filtering, grouping, costs and every sentence on the pages come from fixed rules over the current values. No AI model runs on this page. In a real workflow, a model would read your guidelines and example surveys; the arithmetic would stay in code, as here.</dd></div>
+    <div><dt>Output</dt><dd>The pages above, set for US Letter. The PDF for each budget step is printed from these same pages, so it always matches what you see.</dd></div>
+    <div><dt>Code</dt><dd><a href="https://github.com/fred1433/property-survey-sample">github.com/fred1433/property-survey-sample</a>, with the data, the rules and the limits of this sample.</dd></div>
+  </dl>
+</section>
+
+<footer class="foot">
+  <p>Built by Frederic de Lavenne de Choulot, The AI Pipe. To go through one of your own surveys together: <a href="https://cal.theaipipe.com">book 15 minutes at cal.theaipipe.com</a>.</p>
+</footer>
+
+<script src="rules.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
